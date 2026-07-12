@@ -29,6 +29,7 @@ Sync2 adds that missing semantic layer:
 - quarantine incomplete or divergent history instead of inventing a merge;
 - synchronize personal skill collections with three-way hashes and preserved conflict copies;
 - update local Codex indexes without copying another device's database.
+- discover Codex Projects, select their tasks as a group, and map project roots across Windows and macOS.
 
 ## Quick start
 
@@ -77,7 +78,7 @@ Syncthing or private Git transports bytes. Sync2 decides which bytes are a safe 
 npm run check
 ```
 
-The deterministic suite runs 65 checks across folder and Git transports, interrupted-event recovery, legacy abort repair, stable active checkpoints, conflict preservation, Windows extended paths, desktop catalog updates, maintenance mode, device reports, and skill reconciliation.
+The deterministic suite runs 70 checks across folder and Git transports, project discovery and task selection, cross-platform project path mapping, interrupted-event recovery, legacy abort repair, stable active checkpoints, conflict preservation, Windows extended paths, desktop catalog updates, maintenance mode, device reports, and skill reconciliation.
 
 GitHub Actions runs the same privacy gate and tests on Windows, macOS, and Linux with Node.js 22. The fixtures use isolated temporary Codex homes and synthetic conversations; they never read the user's real vault.
 
@@ -89,6 +90,7 @@ Included:
 - portable task metadata;
 - user-defined skill files;
 - device selection events and health reports.
+- per-device project catalogs and explicit source-to-local path mappings.
 
 Excluded:
 

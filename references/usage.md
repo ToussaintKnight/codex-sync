@@ -25,7 +25,8 @@ Use `$sync2` for native Codex skill invocation. `/sync2` is a conversational ali
 | `$sync2 audit <task>` | Check JSONL syntax, tool-call/output pairs, turn closure, and local index agreement. |
 | `$sync2 repair <task>` | Back up and repair interrupted tool events and stale older turns without inventing output. |
 | `$sync2 auto` | Install or refresh the local automatic task. |
-| `$sync2 project current` | Register the current project as an independent Syncthing folder. |
+| `$sync2 project discover` | List Codex desktop projects and the local tasks grouped under each root. |
+| `$sync2 project current` | Register the current project and select every non-archived task under it. |
 | `$sync2 projects` | List project folder IDs and their real local paths. |
 
 ## Daily workflows
@@ -60,13 +61,29 @@ Use stable collection names across devices. Keep incompatible agent ecosystems i
 
 ### Register a project
 
+First inspect the roots and task grouping known to Codex:
+
+```text
+node <skill-dir>/scripts/sync2.mjs project discover
+```
+
 Run this once on the originating device from the actual project root:
 
 ```text
 $sync2 project current
 ```
 
-Accept the resulting Syncthing folder offer on other devices and choose each device's desired local checkout path. Do not independently create a second folder ID for the same project.
+`project add` also selects every non-archived task whose `cwd` belongs to the project root. Run `sync` so the portable project catalog and those stable task histories reach the vault.
+
+On another device, inspect and accept the advertised folder ID:
+
+```text
+node <skill-dir>/scripts/sync2.mjs project catalogs
+node <skill-dir>/scripts/sync2.mjs project accept <folder-id> --path "<local-project-path>"
+node <skill-dir>/scripts/sync2.mjs sync
+```
+
+`project accept` preserves the source Syncthing folder ID, maps the source path to the target path for imported task metadata, and registers the local root in the Codex desktop Projects list. Do not independently create a second folder ID for the same project.
 
 ### Verify health
 

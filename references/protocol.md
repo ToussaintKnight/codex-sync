@@ -108,7 +108,9 @@ Conversation/skill vault synchronization works whenever an external tool keeps t
 
 The executable is required for `project`, `syncthing add-device`, rescan, and automatic project sharing. Store its device-specific executable path only in local config.
 
-Register each project as a sibling independent Syncthing folder pointing at its real path. Reject parent/child overlaps. Generate the folder ID once on the originating device; other devices accept the offered ID and choose local paths.
+Register each project as a sibling independent Syncthing folder pointing at its real path. Reject parent/child overlaps. Generate the folder ID once on the originating device; other devices accept the advertised ID and choose local paths.
+
+Project selection is also a conversation-selection boundary: `project add` selects each non-archived local thread whose `cwd` is the project root or a descendant. Per-device files under `.sync2/project-catalogs/` advertise the portable folder ID, local source path, Syncthing device ID, and task list without creating a shared mutable manifest. A target acceptance records an explicit source-to-local path map before importing tasks and registers the local root with Codex. Path matching is separator-aware and boundary-aware so `F:\Projects\MUON` maps safely to `/Volumes/Lab/MUON` without also matching a sibling such as `MUON-old`.
 
 Transport-level `.sync-conflict-*` files indicate Syncthing observed concurrent changes outside a single reconciled view. Preserve them and resolve manually before resuming automatic sync.
 

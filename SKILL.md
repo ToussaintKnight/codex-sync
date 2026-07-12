@@ -34,6 +34,7 @@ Map requests as follows:
 - `/sync2 project current` -> run `project add current` from the project root
 - `/sync2 project <path>` -> `project add <path>`
 - `/sync2 projects` -> `project list`
+- `/sync2 project discover` -> `project discover` to list Codex Projects and their local tasks
 - `/sync2 devices` -> `device list`
 
 Always quote paths. Use `--config <path>` when operating a test or non-default profile.
@@ -54,13 +55,15 @@ Never initialize a public Git repository for conversation data. Explain that vau
 Manage project folders through the background CLI/API; do not open the Syncthing UI unless the user explicitly asks for visible inspection.
 
 1. Run `syncthing configure --syncthing-exe <path>` once when automatic detection fails.
-2. From a newly created project root, run `project add current`. The command creates one independent Syncthing folder entry pointing directly at that project; it never copies the project into another Syncthing directory.
-3. Share with all paired remote devices by default. Use `--share-with <device-name-or-id>` or `--share-with none` for a narrower set. Add repeated `--ignore <Syncthing-pattern>` arguments when generated caches or large local-only paths must stay out.
-4. Reject parent/child overlap with an existing Syncthing folder. Keep each selected project and the Sync2 conversation vault as sibling, independent folder entries.
-5. Verify with `project status <folder-id>` and use `project rescan <folder-id>` only when the filesystem watcher has not noticed a change.
-6. Run `project add` on one originating device only. On other devices, accept the Syncthing folder offer and choose the corresponding local path; do not independently generate a second folder ID.
-7. Pair a new machine with `syncthing add-device --device-id <ID> --name <name>`. Projects registered with the default `sharePolicy=all` are shared to newly paired remote devices by the next scheduled `sync` run.
-8. Use `device report` on a newly bootstrapped machine. Scheduled sync also publishes a content-stable device report so another device can verify local conversation indexes, skill counts, and daemon installation without copying terminal output.
+2. Run `project discover` to show the project roots currently known to the Codex desktop app and the non-archived local tasks whose `cwd` belongs to each root.
+3. From an originating project root, run `project add current`. The command creates one independent Syncthing folder entry pointing directly at that project and selects every non-archived Codex task under that root. It never copies the project into another Syncthing directory. Use `--no-tasks` only when project files should be shared without task history.
+4. Share with all paired remote devices by default. Use `--share-with <device-name-or-id>` or `--share-with none` for a narrower set. Add repeated `--ignore <Syncthing-pattern>` arguments when generated caches or large local-only paths must stay out.
+5. Reject parent/child overlap with an existing Syncthing folder. Keep each selected project and the Sync2 conversation vault as sibling, independent folder entries.
+6. Run `sync` on the source so `.sync2/project-catalogs/<device>.json` advertises the portable folder ID, source path, and selected tasks.
+7. On a target device run `project catalogs`, then `project accept <folder-id> --path <local-path>`. This preserves the source folder ID, adds a source-to-local path map, and registers the local root in Codex via its supported `codex://new?path=...` deep link. Use `--no-register` only when UI registration is intentionally deferred. Do not independently generate a second folder ID.
+8. Verify with `project status <folder-id>` and use `project rescan <folder-id>` only when the filesystem watcher has not noticed a change. If only task selection needs repair, run `project tasks <path>`; if only paths need repair, run `project map --from <source-path> --to <local-path>`.
+9. Pair a new machine with `syncthing add-device --device-id <ID> --name <name>`. Projects registered with the default `sharePolicy=all` are shared to newly paired remote devices by the next scheduled `sync` run.
+10. Use `device report` on a newly bootstrapped machine. Scheduled sync also publishes a content-stable device report so another device can verify local conversation indexes, project catalogs, skill counts, and daemon installation without copying terminal output.
 
 ## Safety behavior
 

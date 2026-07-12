@@ -6,7 +6,9 @@ All notable changes are documented here.
 
 ## Unreleased
 
-- No unreleased changes.
+- Fix project synchronization so selecting a project also selects its non-archived Codex tasks instead of producing a project with `No tasks` on the target device.
+- Add project discovery, per-device portable project catalogs, target-side folder acceptance, Codex desktop registration, and explicit path-mapping commands.
+- Make Windows/macOS project path mapping separator-aware and path-boundary-aware.
 
 ## 0.2.0 - 2026-07-12
 
