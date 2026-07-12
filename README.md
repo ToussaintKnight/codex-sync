@@ -1,4 +1,4 @@
-# Codex Sync2
+# Codex Sync
 
 **English** | [简体中文](README.zh-CN.md)
 
