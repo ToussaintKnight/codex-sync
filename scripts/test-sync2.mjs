@@ -198,8 +198,12 @@ try {
 
   const preview = run(["sync", "--dry-run", "--config", configA]);
   assert.equal(preview.dryRun, true);
-  const daemonPreview = run(["daemon", "install", "--dry-run", "--minutes", "3", "--config", configA]);
-  assert.equal(daemonPreview.action, "install-preview");
+  if (["win32", "darwin"].includes(process.platform)) {
+    const daemonPreview = run(["daemon", "install", "--dry-run", "--minutes", "3", "--config", configA]);
+    assert.equal(daemonPreview.action, "install-preview");
+  } else {
+    assert.match(runFails(["daemon", "install", "--dry-run", "--minutes", "3", "--config", configA]), /supports Windows Task Scheduler and macOS LaunchAgents/);
+  }
   const doctor = run(["doctor", "--config", configA]);
   assert.equal(doctor.ok, true);
   const status = run(["status", "--config", configA]);
