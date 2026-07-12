@@ -46,7 +46,7 @@ Never synchronize local config or base state between devices. They contain devic
 
 Treat Codex rollout JSONL as append-only. Read only complete JSON records; discard an incomplete final line from a live writer snapshot.
 
-Before publishing, validate both syntax and event semantics. Pair every `custom_tool_call`/`function_call` with its output and close every older turn with `task_complete` or `turn_aborted`. Treat calls belonging to the latest open turn as transient. Never publish that active turn; if the prefix before its `task_started` event is independently stable, publish that completed prefix as a checkpoint. This prevents long-running Goals from starving sync when a new turn starts immediately after each completion.
+Before publishing, validate syntax, event semantics, and desktop projection compatibility. Pair every `custom_tool_call`/`function_call` with its output and close every older turn with `task_complete` or `turn_aborted`. A repaired abort must match Codex's native projection shape: an associated `<turn_aborted>` developer marker followed by `reason: "interrupted"`, numeric `completed_at`, and numeric `duration_ms`. Treat calls belonging to the latest open turn as transient. Never publish that active turn; if the prefix before its `task_started` event is independently stable, publish that completed prefix as a checkpoint. This prevents long-running Goals from starving sync when a new turn starts immediately after each completion.
 
 Each device publishes its stable local snapshot to `heads/<device>.jsonl`. Reconciliation compares raw bytes:
 
@@ -54,7 +54,7 @@ Each device publishes its stable local snapshot to `heads/<device>.jsonl`. Recon
 - when any pair diverges, retain the existing canonical, preserve all heads, and write `conflict.json`;
 - never interleave turns or invent a merged event order.
 
-Ignore semantically incomplete heads and canonical files. Continue skill and project synchronization instead of failing the entire run. Once a valid longer head arrives, it can replace an invalid old canonical without treating the invalid copies as merge candidates.
+Ignore semantically incomplete or projection-unsafe heads and canonical files. Continue skill and project synchronization instead of failing the entire run. Once a valid longer head arrives, it can replace an invalid old canonical without treating the invalid copies as merge candidates.
 
 Import only a semantically complete canonical into the platform-appropriate `~/.codex/sessions/YYYY/MM/DD` path. Update that thread in `state_5.sqlite`, `session_index.jsonl`, and an existing local desktop catalog row. Do not copy database files between devices.
 
@@ -88,7 +88,7 @@ Case-only file or directory names are unsafe across Windows and default macOS fi
 
 ## 5. Device reports and cold start
 
-`device report` publishes content-stable evidence about platform, Node version, protocol revision, Sync2 script SHA-256, vault, selected-task local/vault health, skill counts, scheduler state, and last-run result. `device list` reads all propagated reports. Do not declare a fleet upgraded until every expected device reports the same current protocol revision and script hash.
+`device report` publishes content-stable evidence about platform, Node version, protocol revision, Sync2 script SHA-256, vault, selected-task local/vault health, skill counts, scheduler state, and last-run result. A normal sync embeds that same run's result in the report before transport commit; if the transport commit fails, it rewrites the local/vault report as failed instead of leaving a false success. `device list` reads all propagated reports. Do not declare a fleet upgraded until every expected device reports the same current protocol revision and script hash.
 
 On a new device, the first sync usually performs this order:
 
@@ -166,8 +166,8 @@ Resolution archives nonchosen vault heads and backs up a differing local history
 1. Disable the scheduler and pause the transport folder.
 2. Back up the rollout, state database, session index, desktop catalog database, and vault task directory.
 3. Run `conversation audit <id>`.
-4. Run `conversation repair <id> --title <known-title>`. The repair appends an explicit interrupted-output placeholder and aborts only stale older turns; it does not fabricate the original output or close the currently executing turn.
-5. Require zero persistent dangling calls, zero stale open turns, and consistent titles across indexes.
+4. Run `conversation repair <id> --title <known-title>`. The repair appends an explicit interrupted-output placeholder and aborts only stale older turns using Codex's native projection-compatible event shape; it does not fabricate the original output or close the currently executing turn.
+5. Require zero persistent dangling calls, zero stale open turns, zero projection-unsafe abort events, and consistent titles across indexes.
 6. Leave invalid old heads quarantined until a stable local final turn publishes a valid replacement canonical.
 
 ### Skill file

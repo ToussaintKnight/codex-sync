@@ -149,6 +149,9 @@ try {
   assert.equal(reportB.selectedConversations[0].rolloutExists, true);
   assert.equal(reportB.selectedConversations[0].indexedInStateDb, true);
   assert.ok(reportB.skillSources[0].files >= 1);
+  assert.equal(reportB.lastRun.ok, true);
+  assert.equal(reportB.lastRun.summary.conversationsPulled, pullB.conversationsPulled);
+  assert.equal(reportB.lastRun.summary.skillFilesPulled, pullB.skillFilesPulled);
   const dbB = new DatabaseSync(path.join(b.home, "state_5.sqlite"));
   assert.equal(dbB.prepare("SELECT title FROM threads WHERE id=?").get(id).title, "Sync2 E2E Thread");
   dbB.close();
@@ -254,10 +257,33 @@ try {
   const repairedCanonical = fs.readFileSync(path.join(damagedConversationRoot, "canonical.jsonl"), "utf8");
   assert.match(repairedCanonical, /custom_tool_call_output/);
   assert.match(repairedCanonical, /recovered_stale_turn/);
+  const repairedAudit = run(["conversation", "audit", damagedId, "--config", damagedConfigA]);
+  assert.equal(repairedAudit.rollout.projectionUnsafeAbortEvents.length, 0);
+  const repairedAbort = repairedCanonical.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line))
+    .find((item) => item.type === "event_msg" && item.payload?.type === "turn_aborted" && item.payload?.turn_id === oldTurn);
+  assert.equal(repairedAbort.payload.reason, "interrupted");
+  assert.equal(Number.isFinite(repairedAbort.payload.completed_at), true);
+  assert.equal(Number.isFinite(repairedAbort.payload.duration_ms), true);
   assert.ok(fs.existsSync(path.join(damagedConversationRoot, "metadata", "win-c.json")));
   const repairedPull = run(["pull", "--config", damagedConfigB]);
   assert.equal(repairedPull.conversationsPulled, 1);
   assert.ok(findRollout(damagedB.home, damagedId));
+
+  const legacyAbortTurn = "turn-legacy-projection-abort";
+  fs.appendFileSync(damagedRollout, `${record("event_msg", { type: "task_started", turn_id: legacyAbortTurn, started_at: 1767225900 })}\n${record("event_msg", { type: "turn_aborted", turn_id: legacyAbortTurn, reason: "recovered_stale_turn" })}\n`);
+  const legacyAbortAudit = run(["conversation", "audit", damagedId, "--config", damagedConfigA]);
+  assert.equal(legacyAbortAudit.rollout.semanticOk, false);
+  assert.equal(legacyAbortAudit.rollout.projectionUnsafeAbortEvents.length, 1);
+  const legacyAbortRepair = run(["conversation", "repair", damagedId, "--config", damagedConfigA]);
+  assert.deepEqual(legacyAbortRepair.closedStaleTurns, [legacyAbortTurn]);
+  assert.equal(legacyAbortRepair.semanticOkAfter, true);
+  const legacyAbortAfter = run(["conversation", "audit", damagedId, "--config", damagedConfigA]);
+  assert.equal(legacyAbortAfter.rollout.projectionUnsafeAbortEvents.length, 0);
+  const legacyAbortEvents = fs.readFileSync(damagedRollout, "utf8").split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line))
+    .filter((item) => item.type === "event_msg" && item.payload?.type === "turn_aborted" && item.payload?.turn_id === legacyAbortTurn);
+  assert.equal(legacyAbortEvents.at(-1).payload.reason, "interrupted");
+  assert.equal(Number.isFinite(legacyAbortEvents.at(-1).payload.completed_at), true);
+  assert.equal(Number.isFinite(legacyAbortEvents.at(-1).payload.duration_ms), true);
 
   run(["maintenance", "on", "--reason", "test", "--config", damagedConfigA]);
   assert.match(runFails(["sync", "--config", damagedConfigA]), /maintenance mode is enabled/);
@@ -307,7 +333,7 @@ try {
   assert.equal(relocation.action, "vault-updated");
   assert.ok(fs.existsSync(path.join(relocatedVault, "skills", "codex", "git-skill", "SKILL.md")));
 
-  console.log(JSON.stringify({ ok: true, root, checks: 56, deviceReports: true, noOpWrites: true, stableActiveCheckpoint: true, extendedWindowsPath: true, semanticRepair: true, unsafeCanonicalQuarantine: true, activeTurnProtection: true, perDeviceMetadata: true, desktopCatalogImport: true, maintenanceMode: true, maintenanceBootstrap: process.platform === "win32", folderTransport: true, gitTransport: true, vaultRelocation: true, conversationImport: true, skillThreeWay: true, conflictRecovery: true, daemonPreview: true }, null, 2));
+  console.log(JSON.stringify({ ok: true, root, checks: 65, deviceReports: true, noOpWrites: true, stableActiveCheckpoint: true, extendedWindowsPath: true, semanticRepair: true, legacyAbortRepair: true, unsafeCanonicalQuarantine: true, activeTurnProtection: true, perDeviceMetadata: true, desktopCatalogImport: true, maintenanceMode: true, maintenanceBootstrap: process.platform === "win32", folderTransport: true, gitTransport: true, vaultRelocation: true, conversationImport: true, skillThreeWay: true, conflictRecovery: true, daemonPreview: true }, null, 2));
 } catch (error) {
   console.error(`E2E FAILED; artifacts kept at ${root}`);
   throw error;

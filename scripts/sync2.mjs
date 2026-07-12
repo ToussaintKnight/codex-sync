@@ -177,6 +177,7 @@ function auditJsonlBuffer(buffer) {
   const startedTurns = [];
   const startedTurnEvents = [];
   const closedTurns = new Set();
+  const latestTurnAbortEvents = new Map();
   let finalAnswers = 0;
   let userMessages = 0;
   let lastTimestamp = null;
@@ -187,9 +188,23 @@ function auditJsonlBuffer(buffer) {
     const turnId = payload.turn_id ?? payload.internal_chat_message_metadata_passthrough?.turn_id ?? null;
     if (event.type === "event_msg" && payload.type === "task_started" && payload.turn_id) {
       startedTurns.push(payload.turn_id);
-      startedTurnEvents.push({ turnId: payload.turn_id, line: index + 1 });
+      startedTurnEvents.push({ turnId: payload.turn_id, line: index + 1, startedAt: payload.started_at ?? null });
     }
-    if (event.type === "event_msg" && ["task_complete", "turn_aborted"].includes(payload.type) && payload.turn_id) closedTurns.add(payload.turn_id);
+    if (event.type === "event_msg" && ["task_complete", "turn_aborted"].includes(payload.type) && payload.turn_id) {
+      closedTurns.add(payload.turn_id);
+      if (payload.type === "turn_aborted") {
+        latestTurnAbortEvents.set(payload.turn_id, {
+          turnId: payload.turn_id,
+          line: index + 1,
+          reason: payload.reason ?? null,
+          completedAt: payload.completed_at ?? null,
+          durationMs: payload.duration_ms ?? null,
+          projectionCompatible: payload.reason === "interrupted"
+            && Number.isFinite(payload.completed_at)
+            && Number.isFinite(payload.duration_ms),
+        });
+      }
+    }
     if ((payload.type === "custom_tool_call" || payload.type === "function_call") && payload.call_id) {
       calls.set(payload.call_id, { callId: payload.call_id, kind: payload.type, line: index + 1, turnId });
     }
@@ -204,6 +219,7 @@ function auditJsonlBuffer(buffer) {
   const activeDanglingCalls = danglingCalls.filter((item) => latestTurnId && item.turnId === latestTurnId && openTurns.includes(latestTurnId));
   const tailDanglingCalls = danglingCalls.filter((item) => item.line === lines.length);
   const persistentDanglingCalls = danglingCalls.filter((item) => !activeDanglingCalls.some((active) => active.callId === item.callId));
+  const projectionUnsafeAbortEvents = [...latestTurnAbortEvents.values()].filter((item) => !item.projectionCompatible);
   return {
     lines: lines.length,
     bytes: buffer.length,
@@ -216,11 +232,12 @@ function auditJsonlBuffer(buffer) {
     activeDanglingCalls,
     tailDanglingCalls,
     persistentDanglingCalls,
+    projectionUnsafeAbortEvents,
     openTurns,
     staleOpenTurns,
     latestTurnId,
-    semanticOk: persistentDanglingCalls.length === 0 && staleOpenTurns.length === 0,
-    stable: danglingCalls.length === 0 && openTurns.length === 0,
+    semanticOk: persistentDanglingCalls.length === 0 && staleOpenTurns.length === 0 && projectionUnsafeAbortEvents.length === 0,
+    stable: danglingCalls.length === 0 && openTurns.length === 0 && projectionUnsafeAbortEvents.length === 0,
   };
 }
 
@@ -1202,7 +1219,7 @@ function reconcileProjectShares(config, dryRun, summary) {
   }
 }
 
-function buildDeviceReport(config) {
+function buildDeviceReport(config, lastRunOverride = undefined) {
   const selectedConversations = Object.entries(config.conversations ?? {}).filter(([, event]) => event.selected).map(([id, event]) => {
     const rollout = findRollout(config.codexHome, id);
     let audit = null;
@@ -1240,12 +1257,12 @@ function buildDeviceReport(config) {
     skillSources,
     daemon: daemonStatus(config, config._configFile),
     maintenance: { enabled: fs.existsSync(maintenanceFile(config)) },
-    lastRun: readJson(lastRunFile(config), null),
+    lastRun: lastRunOverride === undefined ? readJson(lastRunFile(config), null) : lastRunOverride,
   };
 }
 
-function publishDeviceReport(config, dryRun = false) {
-  const report = buildDeviceReport(config);
+function publishDeviceReport(config, dryRun = false, lastRunOverride = undefined) {
+  const report = buildDeviceReport(config, lastRunOverride);
   writeJson(path.join(config.vault, ".sync2", "device-reports", `${config.deviceId}.json`), report, dryRun);
   return report;
 }
@@ -1290,6 +1307,7 @@ function syncCommand(options, direction = "sync") {
   const dryRun = Boolean(options["dry-run"]);
   const summary = newSummary(direction, dryRun);
   const startedAt = nowIso();
+  let reportPublished = false;
   try {
     ensureVault(config, dryRun);
     if (!dryRun && fs.existsSync(maintenanceFile(config)) && !options.force) {
@@ -1300,14 +1318,21 @@ function syncCommand(options, direction = "sync") {
       syncConversations(config, direction, dryRun, summary);
       syncSkills(config, direction, dryRun, summary);
       reconcileProjectShares(config, dryRun, summary);
-      publishDeviceReport(config, dryRun);
+      const successfulRun = { ok: true, startedAt, finishedAt: nowIso(), summary };
+      recordLastRun(config, successfulRun, dryRun);
+      publishDeviceReport(config, dryRun, successfulRun);
+      reportPublished = !dryRun;
       saveConfig(file, config, dryRun);
     });
     gitPost(config, dryRun);
-    recordLastRun(config, { ok: true, startedAt, finishedAt: nowIso(), summary }, dryRun);
     return summary;
   } catch (error) {
-    recordLastRun(config, { ok: false, startedAt, finishedAt: nowIso(), error: error.message, direction }, dryRun);
+    const failedRun = { ok: false, startedAt, finishedAt: nowIso(), error: error.message, direction };
+    recordLastRun(config, failedRun, dryRun);
+    if (reportPublished) {
+      try { withVaultLock(config, false, () => publishDeviceReport(config, false, failedRun)); }
+      catch { /* Preserve the original sync failure. The next successful run republishes health. */ }
+    }
     throw error;
   }
 }
@@ -1410,8 +1435,39 @@ function repairConversationCommand(options, selector) {
       });
     }
   }
-  for (const turnId of before.rollout.staleOpenTurns) {
-    additions.push({ timestamp: nowIso(), type: "event_msg", payload: { type: "turn_aborted", turn_id: turnId, reason: "recovered_stale_turn" } });
+  const turnsNeedingProjectionRepair = new Set([
+    ...before.rollout.staleOpenTurns,
+    ...before.rollout.projectionUnsafeAbortEvents.map((item) => item.turnId),
+  ]);
+  for (const turnId of turnsNeedingProjectionRepair) {
+    const completedAt = Math.floor(Date.now() / 1000);
+    const startedAt = before.rollout.startedTurnEvents.find((item) => item.turnId === turnId)?.startedAt;
+    const durationMs = Number.isFinite(startedAt) ? Math.max(0, (completedAt - startedAt) * 1000) : 0;
+    additions.push({
+      timestamp: nowIso(),
+      type: "response_item",
+      payload: {
+        type: "message",
+        role: "developer",
+        content: [{
+          type: "input_text",
+          text: "<turn_aborted>\nThe previous turn was interrupted before its completion record was persisted. Sync2 recovered the stale turn without reconstructing missing execution output.\n</turn_aborted>",
+        }],
+        internal_chat_message_metadata_passthrough: { turn_id: turnId },
+      },
+    });
+    additions.push({
+      timestamp: nowIso(),
+      type: "event_msg",
+      payload: {
+        type: "turn_aborted",
+        turn_id: turnId,
+        reason: "interrupted",
+        recovery_reason: "recovered_stale_turn",
+        completed_at: completedAt,
+        duration_ms: durationMs,
+      },
+    });
   }
   if (additions.length) fs.appendFileSync(rollout, `${additions.map((item) => JSON.stringify(item)).join("\n")}\n`);
   const state = threadRow(config.codexHome, before.id) ?? {};
@@ -1444,9 +1500,11 @@ function repairConversationCommand(options, selector) {
     id: before.id,
     recovery,
     repairedCalls: before.rollout.persistentDanglingCalls.map((item) => item.callId),
-    closedStaleTurns: before.rollout.staleOpenTurns,
+    closedStaleTurns: [...turnsNeedingProjectionRepair],
     title,
-    semanticOkAfter: after.rollout.persistentDanglingCalls.filter((item) => !before.rollout.tailDanglingCalls.some((tail) => tail.callId === item.callId)).length === 0 && after.rollout.staleOpenTurns.length === 0,
+    semanticOkAfter: after.rollout.persistentDanglingCalls.filter((item) => !before.rollout.tailDanglingCalls.some((tail) => tail.callId === item.callId)).length === 0
+      && after.rollout.staleOpenTurns.length === 0
+      && after.rollout.projectionUnsafeAbortEvents.length === 0,
     indexesConsistent: after.indexes.consistent,
   };
 }

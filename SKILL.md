@@ -65,7 +65,7 @@ Manage project folders through the background CLI/API; do not open the Syncthing
 ## Safety behavior
 
 - Treat conversation JSONL as append-only. Publish a per-device head and advance the canonical copy only when all heads have a prefix relationship.
-- Require semantic completeness in addition to valid JSON: every tool call needs a matching output, and every older turn needs `task_complete` or `turn_aborted`.
+- Require semantic and desktop-projection completeness in addition to valid JSON: every tool call needs a matching output, every older turn needs `task_complete` or `turn_aborted`, and repaired aborts need Codex-compatible completion fields.
 - Never export the active turn or the tool call currently running Sync2. When possible, publish the semantically complete prefix before the active turn as a stable checkpoint; otherwise skip the task until a healthy checkpoint exists.
 - Quarantine incomplete local snapshots, heads, and canonical files from import or promotion while continuing independent skill/project work.
 - On divergent conversation history, preserve every head, emit a conflict, and do not invent a merged history.
@@ -82,6 +82,6 @@ Manage project folders through the background CLI/API; do not open the Syncthing
 
 Read [usage.md](references/usage.md) for daily commands and output interpretation. For first-machine, new-machine, reinstall, or path-change deployment, follow [deployment.md](references/deployment.md). For edge cases, conflict semantics, and storage boundaries, consult [protocol.md](references/protocol.md).
 
-After setup or material changes, run `conversation audit <task>`, `doctor`, `sync --dry-run`, `sync`, `device report`, and `status`. A healthy active task may report one open latest turn and active calls; it must report zero persistent dangling calls and zero stale open turns. Outside maintenance, `doctor` must also require a stable canonical and stable head from every device.
+After setup or material changes, run `conversation audit <task>`, `doctor`, `sync --dry-run`, `sync`, `device report`, and `status`. A healthy active task may report one open latest turn and active calls; it must report zero persistent dangling calls, zero stale open turns, and zero projection-unsafe abort events. Outside maintenance, `doctor` must also require a stable canonical and stable head from every device.
 
 If an imported task does not appear immediately in the Codex sidebar, verify its JSONL and `state_5.sqlite` row with `doctor`, then restart Codex once. Do not copy the source device's whole database.
