@@ -1,47 +1,48 @@
 # Codex Sync2
 
-Sync selected local Codex conversations and personal skills across Windows and macOS without copying credentials, entire databases, or unfinished conversation turns.
+**English** | [简体中文](README.zh-CN.md)
 
-Sync2 is for people who use Codex on more than one computer and want a controlled, inspectable alternative to copying the whole `~/.codex` directory.
+Codex task history lives on one machine. **Codex Sync2 gives multi-device Codex users a recoverable synchronization layer for selected tasks and personal skills—without copying credentials, live databases, or unfinished turns.**
+
+Built for developers who move between Windows and macOS and need the same trusted Codex context on every device.
 
 ```text
-Codex device A ─┐
-                ├─ trusted private vault ─ stable conversation snapshots
-Codex device B ─┤                         └ user-defined skills
-Codex device C ─┘
+$ sync2 conversation select current
+Selected: Example task
+
+$ sync2 sync
+conversationsPushed: 1   conversationConflicts: 0
+
+$ sync2 doctor
+ok: true
 ```
 
-> Privacy first: the vault contains plaintext conversation text and skill source. Use trusted encrypted storage or a private Git repository. Sync2 deliberately excludes authentication, full databases, logs, caches, attachments, and system/plugin skills.
+## Why Sync2 exists
 
-## What it does
+Copying `~/.codex` is unsafe: it mixes credentials, device identity, live SQLite state, caches, and partially written turns. Generic file synchronization does not understand which Codex events form a complete conversation.
 
-- Synchronizes only explicitly selected Codex tasks.
-- Publishes only complete JSONL records and stable, closed turns.
-- Keeps independent device heads and promotes a canonical history only when heads have a byte-prefix relationship.
-- Quarantines incomplete or divergent history instead of inventing a merge.
-- Synchronizes user skill collections with three-way hashes and preserved conflict copies.
-- Supports Syncthing/shared-folder and private-Git transports.
-- Updates Codex's local thread indexes without copying another device's SQLite database.
-- Provides maintenance mode, recovery backups, health reports, and schedulers for Windows and macOS.
+Sync2 adds that missing semantic layer:
 
-## Requirements
-
-- Node.js 22 or newer
-- Codex initialized at least once on each device
-- A trusted shared folder, or a checked-out **private** Git repository
-- Syncthing only when using project-folder automation or Syncthing transport
+- select only the tasks worth carrying between devices;
+- publish only complete JSONL and stable, closed turns;
+- keep independent device heads and promote a canonical history only when they are byte-prefix compatible;
+- quarantine incomplete or divergent history instead of inventing a merge;
+- synchronize personal skill collections with three-way hashes and preserved conflict copies;
+- update local Codex indexes without copying another device's database.
 
 ## Quick start
 
-Install the repository as a Codex skill:
+Requirements: Node.js 22+, Codex initialized once on each device, and a trusted shared folder or checked-out private Git vault.
+
+Install as a Codex skill:
 
 ```sh
-git clone <private-repository-url> codex-sync2
+git clone <repository-url> codex-sync2
 mkdir -p "$HOME/.codex/skills/sync2"
 cp -R codex-sync2/. "$HOME/.codex/skills/sync2/"
 ```
 
-Initialize one device against an existing trusted vault:
+Initialize one device:
 
 ```sh
 node "$HOME/.codex/skills/sync2/scripts/sync2.mjs" init \
@@ -50,41 +51,35 @@ node "$HOME/.codex/skills/sync2/scripts/sync2.mjs" init \
   --device mac-main
 ```
 
-In a Codex task, invoke:
+Then invoke `$sync2 current` inside the Codex task you want to preserve. Run `$sync2 doctor` before enabling automatic scheduling.
 
-```text
-$sync2 current
+Windows and macOS cold-start commands are in the [deployment guide](references/deployment.md).
+
+> **Security note:** the operational vault stores selected conversation text and user skill source in plaintext. Sync2 never copies credentials or complete Codex databases. Use only storage and peers you trust; see [Security and privacy](SECURITY.md).
+
+## How it works
+
+```mermaid
+flowchart LR
+  A["Device A stable head"] --> V["Syntax + semantic + projection validation"]
+  B["Device B stable head"] --> V
+  C["Device C stable head"] --> V
+  V -->|"all heads share a byte-prefix history"| K["Canonical conversation"]
+  V -->|"divergence or incomplete event"| Q["Preserved quarantine / conflict"]
+  K --> I["Import JSONL + update local indexes"]
 ```
 
-Only selected tasks are exported. Run `$sync2 doctor` before enabling automatic scheduling.
+Syncthing or private Git transports bytes. Sync2 decides which bytes are a safe Codex conversation. Read the [architecture](docs/architecture.md) and [protocol](references/protocol.md) for the invariants.
 
-Windows and macOS bootstrap commands are documented in [references/deployment.md](references/deployment.md).
-
-## Safety model
-
-Sync2 treats rollout JSONL as append-only. A snapshot is publishable only when:
-
-1. every line is valid JSON;
-2. every tool/function call has a matching output;
-3. every older turn is completed or natively interrupted;
-4. the active turn is excluded;
-5. the result is a byte-prefix-compatible device head.
-
-If any rule fails, Sync2 preserves the data and reports the problem. It does not silently choose, truncate, or fabricate history.
-
-See [references/protocol.md](references/protocol.md) for reconciliation and recovery details.
-
-## Verification
-
-Run the deterministic end-to-end suite:
+## Evidence that it works
 
 ```sh
-npm test
+npm run check
 ```
 
-The suite covers folder and Git transports, conversation import, interrupted-event repair, stable active checkpoints, conflict preservation, maintenance mode, Windows extended paths, desktop catalog updates, device reports, and skill reconciliation.
+The deterministic suite runs 65 checks across folder and Git transports, interrupted-event recovery, legacy abort repair, stable active checkpoints, conflict preservation, Windows extended paths, desktop catalog updates, maintenance mode, device reports, and skill reconciliation.
 
-CI runs the suite on Windows, macOS, and Linux with Node.js 22.
+GitHub Actions runs the same privacy gate and tests on Windows, macOS, and Linux with Node.js 22. The fixtures use isolated temporary Codex homes and synthetic conversations; they never read the user's real vault.
 
 ## Data boundaries
 
@@ -97,7 +92,7 @@ Included:
 
 Excluded:
 
-- `auth.json`, tokens, API keys, installation/device credentials;
+- `auth.json`, tokens, API keys, installation and device credentials;
 - `config.toml`, complete SQLite/WAL databases, logs, caches, and models;
 - attachments and generated images;
 - system and plugin-managed skill caches;
@@ -106,20 +101,25 @@ Excluded:
 ## Limitations
 
 - Conversation attachments are not copied.
-- Continuing the same task independently on disconnected devices creates an explicit conflict that requires a human choice.
-- Vault contents are not encrypted by Sync2 itself.
+- Independently continuing the same task while devices are disconnected creates an explicit conflict requiring a human choice.
+- Sync2 does not encrypt the vault itself.
 - Older Sync2 clients do not understand maintenance mode; disable their schedulers before a fleet upgrade.
-- Codex storage formats may evolve, so run `doctor` and the test suite after Codex upgrades.
+- Codex storage formats may evolve; run `doctor` and the test suite after Codex upgrades.
 
 ## Documentation
 
+- [Demonstration](docs/demo.md)
+- [Architecture](docs/architecture.md)
 - [Usage guide](references/usage.md)
 - [Deployment and cold start](references/deployment.md)
 - [Protocol and recovery](references/protocol.md)
-- [Demonstration](docs/demo.md)
 - [Roadmap](docs/roadmap.md)
 - [Security policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
+
+## Project status
+
+Sync2 is an early, tested engineering project. The current release is intended for users comfortable inspecting local files, backups, and synchronization health. Safety and recoverability take priority over automatic conflict resolution.
 
 ## License
 

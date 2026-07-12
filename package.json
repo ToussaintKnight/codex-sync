@@ -9,7 +9,9 @@
   },
   "scripts": {
     "test": "node --no-warnings scripts/test-sync2.mjs",
-    "check": "npm test"
+    "privacy:scan": "node scripts/check-repo-hygiene.mjs",
+    "docs:check": "node scripts/check-docs.mjs",
+    "check": "npm run privacy:scan && npm run docs:check && npm test"
   },
   "license": "MIT"
 }

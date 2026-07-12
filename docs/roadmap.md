@@ -1,5 +1,7 @@
 # Roadmap
 
+**English** | [简体中文](roadmap.zh-CN.md)
+
 ## Near term
 
 - Expand format-compatibility fixtures for future Codex rollout schemas.
