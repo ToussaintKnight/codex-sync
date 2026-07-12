@@ -6,6 +6,10 @@ All notable changes are documented here.
 
 ## Unreleased
 
+- No unreleased changes.
+
+## 0.2.0 - 2026-07-12
+
 - Rewrite the README around user pain, executable proof, and ecosystem positioning.
 - Add paired English/Simplified Chinese README, trust, demo, roadmap, and architecture documents.
 - Add a repository-native sensitive-information gate to local checks and CI.
