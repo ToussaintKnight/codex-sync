@@ -1,0 +1,15 @@
+{
+  "name": "codex-sync2",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Safely synchronize selected local Codex conversations and personal skills across Windows and macOS.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --no-warnings scripts/test-sync2.mjs",
+    "check": "npm test"
+  },
+  "license": "MIT"
+}

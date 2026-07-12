@@ -1,0 +1,46 @@
+# Dependencies and build output
+node_modules/
+coverage/
+dist/
+tmp/
+*.log
+
+# Local Sync2 and Codex state — never commit
+.sync2/
+.codex/
+Sync2Vault/
+vault/
+conversations/
+heads/
+device-reports/
+conflicts/
+recovery/
+*.jsonl
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.db-wal
+*.db-shm
+auth.json
+config.toml
+
+# Credentials and local environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Sync transport conflict artifacts
+*.sync-conflict-*

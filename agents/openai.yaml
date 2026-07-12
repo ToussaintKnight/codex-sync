@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sync2"
+  short_description: "Safely sync selected Codex chats and personal skills"
+  default_prompt: "Use $sync2 to sync my selected Codex conversations and personal skills now."
