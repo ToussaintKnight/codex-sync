@@ -4,7 +4,7 @@
 
 ## 职责拆分
 
-Sync2 明确区分“文件传输”和“会话正确性”。
+Codex Sync 明确区分“文件传输”和“会话正确性”。
 
 ```mermaid
 flowchart TB
@@ -30,8 +30,8 @@ flowchart TB
 ```
 
 - **Syncthing、共享文件夹或私有 Git** 负责在机器间移动文件。
-- **Sync2** 负责校验事件完整性、协调历史并更新本地 Codex 索引。
-- **Codex** 仍是实时任务活动的唯一写入方；Sync2 永远不导出活动回合。
+- **Codex Sync** 负责校验事件完整性、协调历史并更新本地 Codex 索引。
+- **Codex** 仍是实时任务活动的唯一写入方；Codex Sync 永远不导出活动回合。
 
 ## 会话约束
 

@@ -5,14 +5,14 @@
 This demonstration uses synthetic paths and an empty test task.
 
 ```text
-$ sync2 conversation select current
+$ codexsync conversation select current
 Selected: Example task
 
-$ sync2 sync
+$ codexsync sync
 conversationsPushed: 1
 conversationConflicts: 0
 
-$ sync2 doctor
+$ codexsync doctor
 ok: true
 ```
 

@@ -10,7 +10,7 @@ const ignoredDirectories = new Set([".git", "node_modules", "coverage", "dist", 
 const textExtensions = new Set(["", ".md", ".mjs", ".js", ".json", ".yaml", ".yml", ".ps1", ".sh", ".txt"]);
 
 const forbiddenFileRules = [
-  { name: "local state directory", test: (value) => value.split("/").some((part) => [".sync2", ".codex", "Sync2Vault", "recovery", "device-reports"].includes(part)) },
+  { name: "local state directory", test: (value) => value.split("/").some((part) => [".codex-sync", ".codex", "CodexSyncVault", "recovery", "device-reports"].includes(part)) },
   { name: "credential/config file", test: (value) => /(^|\/)(auth\.json|config\.toml|\.env(?:\..*)?)$/i.test(value) && !value.endsWith("/.env.example") },
   { name: "database or conversation artifact", test: (value) => /\.(?:sqlite|sqlite3|db|jsonl)(?:-wal|-shm)?$/i.test(value) },
   { name: "private key material", test: (value) => /(^|\/)(?:id_rsa.*|id_ed25519.*|.*\.(?:pem|key))$/i.test(value) },

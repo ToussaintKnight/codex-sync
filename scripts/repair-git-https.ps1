@@ -11,7 +11,7 @@ $result = [ordered]@{
   computer = $env:COMPUTERNAME
   repairRequested = [bool]$Repair
   httpsTestRequested = [bool]$TestHttps
-  sync2 = $null
+  codexSync = $null
   gitBefore = @()
   gitAfter = @()
   backup = $null
@@ -21,16 +21,16 @@ $result = [ordered]@{
   warnings = @()
 }
 
-$sync2Config = Join-Path $HOME '.sync2\config.json'
-if (Test-Path -LiteralPath $sync2Config) {
+$codexSyncConfig = Join-Path $HOME '.codex-sync\config.json'
+if (Test-Path -LiteralPath $codexSyncConfig) {
   try {
-    $config = Get-Content -Raw -LiteralPath $sync2Config | ConvertFrom-Json
-    $result.sync2 = [ordered]@{ deviceId = $config.deviceId; transport = $config.transport; vault = $config.vault }
+    $config = Get-Content -Raw -LiteralPath $codexSyncConfig | ConvertFrom-Json
+    $result.codexSync = [ordered]@{ deviceId = $config.deviceId; transport = $config.transport; vault = $config.vault }
     if ($config.transport -ne 'git') {
-      $result.warnings += 'Sync2 does not use Git in the current transport mode; this repair targets another Git workflow.'
+      $result.warnings += 'Codex Sync does not use Git in the current transport mode; this repair targets another Git workflow.'
     }
   } catch {
-    $result.warnings += "Could not parse Sync2 config: $($_.Exception.Message)"
+    $result.warnings += "Could not parse Codex Sync config: $($_.Exception.Message)"
   }
 }
 
@@ -59,7 +59,7 @@ if ($Repair) {
 
   $gitConfig = Join-Path $HOME '.gitconfig'
   if (Test-Path -LiteralPath $gitConfig) {
-    $backup = "$gitConfig.sync2-backup-$(Get-Date -Format yyyyMMddHHmmss)"
+    $backup = "$gitConfig.codex-sync-backup-$(Get-Date -Format yyyyMMddHHmmss)"
     Copy-Item -LiteralPath $gitConfig -Destination $backup
     $result.backup = $backup
   }

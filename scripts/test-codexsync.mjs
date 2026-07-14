@@ -9,9 +9,9 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require("node:sqlite");
-const CLI = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/(?:[A-Za-z]:)/, (m) => m.slice(1))), "sync2.mjs");
+const CLI = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/(?:[A-Za-z]:)/, (m) => m.slice(1))), "codexsync.mjs");
 const SKILL_ROOT = path.dirname(path.dirname(CLI));
-const root = fs.mkdtempSync(path.join(os.tmpdir(), "sync2-e2e-"));
+const root = fs.mkdtempSync(path.join(os.tmpdir(), "codex-sync-e2e-"));
 const vault = path.join(root, "vault");
 const id = "019f0000-0000-7000-8000-000000000001";
 const damagedId = "019f0000-0000-7000-8000-000000000002";
@@ -83,9 +83,9 @@ function createThread(homeInfo) {
   fs.writeFileSync(rollout, `${lines.join("\n")}\n`);
   const db = new DatabaseSync(path.join(homeInfo.home, "state_5.sqlite"));
   db.prepare("INSERT INTO threads (id,rollout_path,created_at,updated_at,source,model_provider,cwd,title,sandbox_policy,approval_mode,tokens_used,has_user_event,archived,cli_version,first_user_message,preview,created_at_ms,updated_at_ms,recency_at,recency_at_ms) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-    .run(id, rollout, 1767225600, 1767225600, "cli", "openai", path.join(root, "project"), "Sync2 E2E Thread", "{}", "never", 1, 1, 0, "1.0", "portable hello", "portable hello", 1767225600000, 1767225600000, 1767225600, 1767225600000);
+    .run(id, rollout, 1767225600, 1767225600, "cli", "openai", path.join(root, "project"), "Codex Sync E2E Thread", "{}", "never", 1, 1, 0, "1.0", "portable hello", "portable hello", 1767225600000, 1767225600000, 1767225600, 1767225600000);
   db.close();
-  fs.writeFileSync(path.join(homeInfo.home, "session_index.jsonl"), `${JSON.stringify({ id, thread_name: "Sync2 E2E Thread", updated_at: "2026-01-01T00:00:00.000Z" })}\n`);
+  fs.writeFileSync(path.join(homeInfo.home, "session_index.jsonl"), `${JSON.stringify({ id, thread_name: "Codex Sync E2E Thread", updated_at: "2026-01-01T00:00:00.000Z" })}\n`);
   return rollout;
 }
 
@@ -131,9 +131,9 @@ try {
   const first = run(["sync", "--config", configA]);
   assert.equal(first.conversationsPushed, 1);
   assert.ok(first.skillFilesPushed >= 1);
-  const projectCatalog = JSON.parse(fs.readFileSync(path.join(vault, ".sync2", "project-catalogs", "win-a.json"), "utf8"));
+  const projectCatalog = JSON.parse(fs.readFileSync(path.join(vault, ".codex-sync", "project-catalogs", "win-a.json"), "utf8"));
   assert.equal(projectCatalog.projects.find((project) => project.path === path.join(root, "project")).tasks.length, 1);
-  const selectionFile = path.join(vault, ".sync2", "selections", "win-a.json");
+  const selectionFile = path.join(vault, ".codex-sync", "selections", "win-a.json");
   const headFile = path.join(vault, "conversations", id, "heads", "win-a.jsonl");
   const canonicalFile = path.join(vault, "conversations", id, "canonical.jsonl");
   const unchangedBefore = [selectionFile, headFile, canonicalFile].map((file) => fs.statSync(file).mtimeMs);
@@ -157,7 +157,7 @@ try {
   assert.ok(rolloutB);
   assert.equal(fs.readFileSync(rolloutB, "utf8"), fs.readFileSync(rolloutA, "utf8"));
   assert.equal(fs.readFileSync(path.join(b.home, "skills", "portable-skill", "SKILL.md"), "utf8"), "version a1\n");
-  const reportB = JSON.parse(fs.readFileSync(path.join(vault, ".sync2", "device-reports", "mac-b.json"), "utf8"));
+  const reportB = JSON.parse(fs.readFileSync(path.join(vault, ".codex-sync", "device-reports", "mac-b.json"), "utf8"));
   assert.equal(reportB.selectedConversations[0].rolloutExists, true);
   assert.equal(reportB.selectedConversations[0].indexedInStateDb, true);
   assert.ok(reportB.skillSources[0].files >= 1);
@@ -165,11 +165,11 @@ try {
   assert.equal(reportB.lastRun.summary.conversationsPulled, pullB.conversationsPulled);
   assert.equal(reportB.lastRun.summary.skillFilesPulled, pullB.skillFilesPulled);
   const dbB = new DatabaseSync(path.join(b.home, "state_5.sqlite"));
-  assert.equal(dbB.prepare("SELECT title FROM threads WHERE id=?").get(id).title, "Sync2 E2E Thread");
+  assert.equal(dbB.prepare("SELECT title FROM threads WHERE id=?").get(id).title, "Codex Sync E2E Thread");
   assert.equal(dbB.prepare("SELECT cwd FROM threads WHERE id=?").get(id).cwd, mappedProject);
   dbB.close();
   const appDbB = new DatabaseSync(path.join(b.home, "sqlite", "codex-dev.db"));
-  assert.equal(appDbB.prepare("SELECT display_title FROM local_thread_catalog WHERE thread_id=?").get(id).display_title, "Sync2 E2E Thread");
+  assert.equal(appDbB.prepare("SELECT display_title FROM local_thread_catalog WHERE thread_id=?").get(id).display_title, "Codex Sync E2E Thread");
   assert.equal(appDbB.prepare("SELECT catalog_revision FROM local_thread_catalog_metadata WHERE id=1").get().catalog_revision, 1);
   appDbB.close();
 
@@ -310,22 +310,22 @@ try {
 
   if (process.platform === "win32") {
     const bootstrapVault = path.join(root, "bootstrap-maintenance-vault");
-    const bootstrapSkill = path.join(bootstrapVault, "skills", "codex", "sync2");
+    const bootstrapSkill = path.join(bootstrapVault, "skills", "codex", "codex-sync");
     fs.mkdirSync(path.dirname(bootstrapSkill), { recursive: true });
     fs.cpSync(SKILL_ROOT, bootstrapSkill, { recursive: true });
-    fs.mkdirSync(path.join(bootstrapVault, ".sync2"), { recursive: true });
-    fs.writeFileSync(path.join(bootstrapVault, ".sync2", "maintenance.json"), `${JSON.stringify({ enabled: true, reason: "bootstrap test" })}\n`);
+    fs.mkdirSync(path.join(bootstrapVault, ".codex-sync"), { recursive: true });
+    fs.writeFileSync(path.join(bootstrapVault, ".codex-sync", "maintenance.json"), `${JSON.stringify({ enabled: true, reason: "bootstrap test" })}\n`);
     const bootstrapHome = makeHome("home-bootstrap-win");
     const bootstrapConfig = path.join(root, "profile-bootstrap-win", "config.json");
     execFileSync("powershell.exe", [
-      "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", path.join(SKILL_ROOT, "scripts", "bootstrap-sync2.ps1"),
+      "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", path.join(SKILL_ROOT, "scripts", "bootstrap-codex-sync.ps1"),
       "-Vault", bootstrapVault, "-Device", "bootstrap-win", "-CodexHome", bootstrapHome.home, "-Config", bootstrapConfig,
     ], { stdio: "ignore", env: { ...process.env, NODE_NO_WARNINGS: "1" } });
     assert.ok(fs.existsSync(bootstrapConfig));
-    assert.ok(fs.existsSync(path.join(bootstrapHome.home, "skills", "sync2", "scripts", "sync2.mjs")));
+    assert.ok(fs.existsSync(path.join(bootstrapHome.home, "skills", "codex-sync", "scripts", "codexsync.mjs")));
     const bootstrapLastRun = JSON.parse(fs.readFileSync(path.join(path.dirname(bootstrapConfig), "runs", "bootstrap-win-last.json"), "utf8"));
     assert.equal(bootstrapLastRun.ok, true);
-    assert.ok(fs.existsSync(path.join(bootstrapVault, ".sync2", "maintenance.json")));
+    assert.ok(fs.existsSync(path.join(bootstrapVault, ".codex-sync", "maintenance.json")));
   }
 
   const gitHome = makeHome("home-git");
@@ -335,14 +335,14 @@ try {
   const gitVault = path.join(root, "git-vault");
   fs.mkdirSync(gitVault, { recursive: true });
   execFileSync("git", ["init", "-b", "main"], { cwd: gitVault, stdio: "ignore" });
-  execFileSync("git", ["config", "user.name", "Sync2 Test"], { cwd: gitVault });
-  execFileSync("git", ["config", "user.email", "sync2-test@example.invalid"], { cwd: gitVault });
+  execFileSync("git", ["config", "user.name", "Codex Sync Test"], { cwd: gitVault });
+  execFileSync("git", ["config", "user.email", "codex-sync-test@example.invalid"], { cwd: gitVault });
   const gitConfig = path.join(root, "profile-git", "config.json");
   run(["init", "--vault", gitVault, "--transport", "git", "--device", "git-device", "--codex-home", gitHome.home, "--config", gitConfig]);
   const gitSync = run(["sync", "--config", gitConfig]);
   assert.ok(gitSync.skillFilesPushed >= 1);
   const gitLog = execFileSync("git", ["log", "-1", "--pretty=%s"], { cwd: gitVault, encoding: "utf8" });
-  assert.match(gitLog, /^sync2: git-device/);
+  assert.match(gitLog, /^codex-sync: git-device/);
   assert.ok(fs.existsSync(path.join(gitVault, "skills", "codex", "git-skill", "SKILL.md")));
 
   const relocatedVault = path.join(root, "relocated-vault");
@@ -355,5 +355,5 @@ try {
   console.error(`E2E FAILED; artifacts kept at ${root}`);
   throw error;
 } finally {
-  if (process.exitCode !== 1 && !process.env.SYNC2_KEEP_TEST) fs.rmSync(root, { recursive: true, force: true });
+  if (process.exitCode !== 1 && !process.env.CODEX_SYNC_KEEP_TEST) fs.rmSync(root, { recursive: true, force: true });
 }
