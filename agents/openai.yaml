@@ -1,4 +1,4 @@
 interface:
-  display_name: "Sync2"
-  short_description: "Safely sync selected Codex chats and personal skills"
-  default_prompt: "Use $sync2 to sync my selected Codex conversations and personal skills now."
+  display_name: "Codex Sync"
+  short_description: "Continue selected Codex projects safely across devices"
+  default_prompt: "Use Codex Sync via $codex-sync to synchronize my selected Codex tasks and personal skills now."

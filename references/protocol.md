@@ -1,4 +1,4 @@
-# Sync2 protocol and edge cases
+# Codex Sync protocol and edge cases
 
 ## Contents
 
@@ -17,7 +17,7 @@
 
 ```text
 vault/
-  .sync2/
+  .codex-sync/
     vault.json
     maintenance.json
     selections/<device>.json
@@ -33,7 +33,7 @@ vault/
   conflicts/skills/<collection>/...
 ```
 
-Local-only state lives under `~/.sync2`:
+Local-only state lives under `~/.codex-sync`:
 
 - `config.json`: device ID, local vault path, Codex home, sources, projects, and schedule settings;
 - `state/`: last synchronized skill hashes for three-way comparison;
@@ -64,7 +64,7 @@ The imported `cwd` can reference a path that does not exist on the destination. 
 
 ## 3. Selection events
 
-Store per-device selection events in `.sync2/selections`. Merge by `updatedAt`, with device ID as a deterministic tie-breaker. Therefore:
+Store per-device selection events in `.codex-sync/selections`. Merge by `updatedAt`, with device ID as a deterministic tie-breaker. Therefore:
 
 - keep device clocks synchronized;
 - use a unique device ID per installation;
@@ -80,7 +80,7 @@ Compare local hash, vault hash, and the last successful local base hash for each
 - one side is absent -> restore/copy the existing side because deletion is non-propagating;
 - both sides changed differently -> preserve originals and write conflict copies.
 
-Skip symlinks because targets and permissions are not portable. Exclude `.system`, plugin caches, `.git`, `node_modules`, `__pycache__`, and generated Sync2 conflict copies.
+Skip symlinks because targets and permissions are not portable. Exclude `.system`, plugin caches, `.git`, `node_modules`, `__pycache__`, and generated Codex Sync conflict copies.
 
 Keep ecosystems in separate collections. `skills/hermes/foo` can be centrally stored without installing it into Codex on every device.
 
@@ -88,7 +88,7 @@ Case-only file or directory names are unsafe across Windows and default macOS fi
 
 ## 5. Device reports and cold start
 
-`device report` publishes content-stable evidence about platform, Node version, protocol revision, Sync2 script SHA-256, vault, selected-task local/vault health, skill counts, scheduler state, and last-run result. A normal sync embeds that same run's result in the report before transport commit; if the transport commit fails, it rewrites the local/vault report as failed instead of leaving a false success. `device list` reads all propagated reports. Do not declare a fleet upgraded until every expected device reports the same current protocol revision and script hash.
+`device report` publishes content-stable evidence about platform, Node version, protocol revision, Codex Sync script SHA-256, vault, selected-task local/vault health, skill counts, scheduler state, and last-run result. A normal sync embeds that same run's result in the report before transport commit; if the transport commit fails, it rewrites the local/vault report as failed instead of leaving a false success. `device list` reads all propagated reports. Do not declare a fleet upgraded until every expected device reports the same current protocol revision and script hash.
 
 On a new device, the first sync usually performs this order:
 
@@ -104,29 +104,29 @@ A report proves the explicit bootstrap reached the reporting step. To prove auto
 
 ## 6. Syncthing project folders
 
-Conversation/skill vault synchronization works whenever an external tool keeps the vault directory synchronized; Sync2 does not require the Syncthing executable for this core path.
+Conversation/skill vault synchronization works whenever an external tool keeps the vault directory synchronized; Codex Sync does not require the Syncthing executable for this core path.
 
 The executable is required for `project`, `syncthing add-device`, rescan, and automatic project sharing. Store its device-specific executable path only in local config.
 
 Register each project as a sibling independent Syncthing folder pointing at its real path. Reject parent/child overlaps. Generate the folder ID once on the originating device; other devices accept the advertised ID and choose local paths.
 
-Project selection is also a conversation-selection boundary: `project add` selects each non-archived local thread whose `cwd` is the project root or a descendant. Per-device files under `.sync2/project-catalogs/` advertise the portable folder ID, local source path, Syncthing device ID, and task list without creating a shared mutable manifest. A target acceptance records an explicit source-to-local path map before importing tasks and registers the local root with Codex. Path matching is separator-aware and boundary-aware so `F:\Projects\MUON` maps safely to `/Volumes/Lab/MUON` without also matching a sibling such as `MUON-old`.
+Project selection is also a conversation-selection boundary: `project add` selects each non-archived local thread whose `cwd` is the project root or a descendant. Per-device files under `.codex-sync/project-catalogs/` advertise the portable folder ID, local source path, Syncthing device ID, and task list without creating a shared mutable manifest. A target acceptance records an explicit source-to-local path map before importing tasks and registers the local root with Codex. Path matching is separator-aware and boundary-aware so `F:\Projects\MUON` maps safely to `/Volumes/Lab/MUON` without also matching a sibling such as `MUON-old`.
 
 Transport-level `.sync-conflict-*` files indicate Syncthing observed concurrent changes outside a single reconciled view. Preserve them and resolve manually before resuming automatic sync.
 
 ## 7. Git transport
 
-Before reconciliation, run `git pull --rebase --autostash` when an upstream exists. After reconciliation, stage only Sync2 vault paths, commit when changed, and push only with an upstream.
+Before reconciliation, run `git pull --rebase --autostash` when an upstream exists. After reconciliation, stage only Codex Sync vault paths, commit when changed, and push only with an upstream.
 
 Stop on any Git error. Never reset, force-push, or auto-resolve a Git conflict. Do not expose conversation data through a public repository.
 
 ## 8. Scheduler and locking
 
-Use Task Scheduler on Windows and a per-user LaunchAgent on macOS. Store the exact Node executable, skill script, and config path in the scheduler definition. Record every non-dry automatic result under local `~/.sync2/runs/<device>-last.json`.
+Use Task Scheduler on Windows and a per-user LaunchAgent on macOS. Store the exact Node executable, skill script, and config path in the scheduler definition. Record every non-dry automatic result under local `~/.codex-sync/runs/<device>-last.json`.
 
 Use a local operation lock to suppress overlapping runs on one device. The lock cannot serialize disconnected devices; protocol-level heads and three-way hashes provide cross-device safety.
 
-Create `.sync2/maintenance.json` before repairs, protocol migrations, or fleet upgrades. New clients refuse normal writes while it exists; use `--force` only for the one controlled maintenance write. Older clients do not understand this marker, so disable their schedulers before reconnecting them.
+Create `.codex-sync/maintenance.json` before repairs, protocol migrations, or fleet upgrades. New clients refuse normal writes while it exists; use `--force` only for the one controlled maintenance write. Older clients do not understand this marker, so disable their schedulers before reconnecting them.
 
 Report local rollout health separately from vault health. During maintenance, show unsafe heads without failing the local repair gate. Outside maintenance, make `doctor` fail until the canonical and every device head are stable; this prevents a healthy Win A from masking stale corrupted heads elsewhere.
 
@@ -156,12 +156,12 @@ Conversation bodies and skill contents remain plaintext in the vault. Use truste
 4. On each affected device run:
 
 ```text
-node <skill-dir>/scripts/sync2.mjs conversation resolve <thread-id> --from-device <chosen-device>
+node <skill-dir>/scripts/codexsync.mjs conversation resolve <thread-id> --from-device <chosen-device>
 ```
 
 5. Sync again on each device and require `conflict.json` to disappear.
 
-Resolution archives nonchosen vault heads and backs up a differing local history under `~/.sync2/conflicts/conversations` before replacement.
+Resolution archives nonchosen vault heads and backs up a differing local history under `~/.codex-sync/conflicts/conversations` before replacement.
 
 ### Interrupted tool call or stale turn
 
@@ -182,4 +182,4 @@ Resolution archives nonchosen vault heads and backs up a differing local history
 
 ### Stale operation lock
 
-Sync2 considers a local operation lock stale after its safety interval. Before removing a lock manually, confirm no scheduler or interactive Sync2 process is still running.
+Codex Sync considers a local operation lock stale after its safety interval. Before removing a lock manually, confirm no scheduler or interactive Codex Sync process is still running.

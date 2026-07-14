@@ -1,14 +1,17 @@
 {
-  "name": "codex-sync2",
-  "version": "0.2.0",
+  "name": "codex-sync",
+  "version": "0.3.0",
   "private": true,
-  "description": "Safely synchronize selected local Codex conversations and personal skills across Windows and macOS.",
+  "description": "Codex Sync safely carries selected local Codex projects, task histories, and personal skills across Windows and macOS.",
   "type": "module",
+  "bin": {
+    "codexsync": "scripts/codexsync.mjs"
+  },
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --no-warnings scripts/test-sync2.mjs",
+    "test": "node --no-warnings scripts/test-codexsync.mjs",
     "privacy:scan": "node scripts/check-repo-hygiene.mjs",
     "docs:check": "node scripts/check-docs.mjs",
     "check": "npm run privacy:scan && npm run docs:check && npm test"

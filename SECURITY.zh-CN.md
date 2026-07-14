@@ -6,17 +6,17 @@
 
 对于漏洞或疑似数据暴露，请使用 GitHub 私有安全公告流程。不要在公开 Issue 中包含会话文本、本地路径、设备标识、凭据或 vault 内容。
 
-请提供受影响的 Sync2 版本、平台、使用合成数据的复现步骤，以及预期的安全边界。附加日志前先删除敏感信息。
+请提供受影响的 Codex Sync 版本、平台、使用合成数据的复现步骤，以及预期的安全边界。附加日志前先删除敏感信息。
 
 每次 push 或 release 前运行 `npm run privacy:scan`。如果凭据已经进入 Git 历史或远端，必须撤销或轮换；仅在后续提交中删除并不足够。
 
 ## 数据模型
 
-Sync2 是本地优先的同步工具。它读取已选择的 Codex rollout 文件与用户配置的 Skill 根目录，然后将经过协议约束的状态写入用户控制的 vault。
+Codex Sync 是本地优先的同步工具。它读取已选择的 Codex rollout 文件与用户配置的 Skill 根目录，然后将经过协议约束的状态写入用户控制的 vault。
 
-Vault 可能包含明文会话正文与源码。Sync2 不加密 vault。请使用加密磁盘、可信 Syncthing 对等设备或具备适当访问控制的私有 Git 仓库。
+Vault 可能包含明文会话正文与源码。Codex Sync 不加密 vault。请使用加密磁盘、可信 Syncthing 对等设备或具备适当访问控制的私有 Git 仓库。
 
-Sync2 不得复制：
+Codex Sync 不得复制：
 
 - Codex 身份验证信息或 API 凭据；
 - 完整 Codex 数据库或 WAL 文件；

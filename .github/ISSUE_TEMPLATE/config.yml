@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/ToussaintKnight/codex-sync2/security/advisories/new
+    url: https://github.com/ToussaintKnight/codex-sync/security/advisories/new
     about: Report vulnerabilities or possible private-data exposure confidentially.

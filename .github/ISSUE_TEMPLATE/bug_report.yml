@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible Sync2 failure using synthetic or redacted data.
+description: Report a reproducible Codex Sync failure using synthetic or redacted data.
 title: "[Bug]: "
 labels: [bug]
 body:

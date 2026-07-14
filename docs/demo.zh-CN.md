@@ -5,14 +5,14 @@
 此演示使用合成路径与空白测试任务。
 
 ```text
-$ sync2 conversation select current
+$ codexsync conversation select current
 Selected: Example task
 
-$ sync2 sync
+$ codexsync sync
 conversationsPushed: 1
 conversationConflicts: 0
 
-$ sync2 doctor
+$ codexsync doctor
 ok: true
 ```
 

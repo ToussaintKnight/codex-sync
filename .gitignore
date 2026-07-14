@@ -5,10 +5,10 @@ dist/
 tmp/
 *.log
 
-# Local Sync2 and Codex state — never commit
-.sync2/
+# Local Codex Sync and Codex state — never commit
+.codex-sync/
 .codex/
-Sync2Vault/
+CodexSyncVault/
 vault/
 conversations/
 heads/

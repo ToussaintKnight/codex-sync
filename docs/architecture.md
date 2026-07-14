@@ -4,7 +4,7 @@
 
 ## Responsibility split
 
-Sync2 deliberately separates transport from conversation correctness.
+Codex Sync deliberately separates transport from conversation correctness.
 
 ```mermaid
 flowchart TB
@@ -30,8 +30,8 @@ flowchart TB
 ```
 
 - **Syncthing/shared folders/private Git** move files between machines.
-- **Sync2** validates event completeness, reconciles histories, and updates local Codex indexes.
-- **Codex** remains the only writer of live task activity; Sync2 never exports the active turn.
+- **Codex Sync** validates event completeness, reconciles histories, and updates local Codex indexes.
+- **Codex** remains the only writer of live task activity; Codex Sync never exports the active turn.
 
 ## Conversation invariants
 

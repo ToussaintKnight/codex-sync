@@ -6,6 +6,8 @@ All notable changes are documented here.
 
 ## Unreleased
 
+- Complete the breaking identity migration to **Codex Sync**: `$codex-sync` for the Skill, `codexsync` for the CLI, `.codex-sync/` for state, and matching scheduler/service identifiers. Mixed-version fleet writes are unsupported during this upgrade.
+- Rewrite the README motivation around the real cross-device continuity gap between local Codex projects and trusted computers.
 - Fix project synchronization so selecting a project also selects its non-archived Codex tasks instead of producing a project with `No tasks` on the target device.
 - Add project discovery, per-device portable project catalogs, target-side folder acceptance, Codex desktop registration, and explicit path-mapping commands.
 - Make Windows/macOS project path mapping separator-aware and path-boundary-aware.
