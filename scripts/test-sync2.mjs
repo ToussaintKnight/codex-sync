@@ -74,6 +74,7 @@ function makeHome(name) {
 }
 
 function createThread(homeInfo) {
+  fs.mkdirSync(path.join(root, "project"), { recursive: true });
   const rollout = path.join(homeInfo.sessionDir, `rollout-2026-01-01T00-00-00-${id}.jsonl`);
   const lines = [
     record("session_meta", { id, timestamp: "2026-01-01T00:00:00.000Z", cwd: path.join(root, "project"), originator: "test", cli_version: "1.0", source: "cli", model_provider: "openai" }),
@@ -117,10 +118,21 @@ try {
 
   run(["init", "--vault", vault, "--transport", "folder", "--device", "win-a", "--codex-home", a.home, "--config", configA]);
   run(["init", "--vault", vault, "--transport", "folder", "--device", "mac-b", "--codex-home", b.home, "--config", configB]);
+  fs.writeFileSync(path.join(a.home, ".codex-global-state.json"), `${JSON.stringify({ "electron-saved-workspace-roots": [path.join(root, "project")] })}\n`);
+  const discoveredProjects = run(["project", "discover", "--config", configA]);
+  assert.equal(discoveredProjects.projects.find((project) => project.path === path.join(root, "project")).tasks.length, 1);
+  const selectedProjectTasks = run(["project", "tasks", path.join(root, "project"), "--config", configA]);
+  assert.equal(selectedProjectTasks.count, 1);
+  const mappedProject = path.join(root, "mapped-project");
+  fs.mkdirSync(mappedProject, { recursive: true });
+  const mapped = run(["project", "map", "--from", path.join(root, "project"), "--to", mappedProject, "--config", configB]);
+  assert.equal(mapped.pathMaps[0].to, mappedProject);
   run(["conversation", "select", "current", "--config", configA], { CODEX_THREAD_ID: id });
   const first = run(["sync", "--config", configA]);
   assert.equal(first.conversationsPushed, 1);
   assert.ok(first.skillFilesPushed >= 1);
+  const projectCatalog = JSON.parse(fs.readFileSync(path.join(vault, ".sync2", "project-catalogs", "win-a.json"), "utf8"));
+  assert.equal(projectCatalog.projects.find((project) => project.path === path.join(root, "project")).tasks.length, 1);
   const selectionFile = path.join(vault, ".sync2", "selections", "win-a.json");
   const headFile = path.join(vault, "conversations", id, "heads", "win-a.jsonl");
   const canonicalFile = path.join(vault, "conversations", id, "canonical.jsonl");
@@ -154,6 +166,7 @@ try {
   assert.equal(reportB.lastRun.summary.skillFilesPulled, pullB.skillFilesPulled);
   const dbB = new DatabaseSync(path.join(b.home, "state_5.sqlite"));
   assert.equal(dbB.prepare("SELECT title FROM threads WHERE id=?").get(id).title, "Sync2 E2E Thread");
+  assert.equal(dbB.prepare("SELECT cwd FROM threads WHERE id=?").get(id).cwd, mappedProject);
   dbB.close();
   const appDbB = new DatabaseSync(path.join(b.home, "sqlite", "codex-dev.db"));
   assert.equal(appDbB.prepare("SELECT display_title FROM local_thread_catalog WHERE thread_id=?").get(id).display_title, "Sync2 E2E Thread");
@@ -337,7 +350,7 @@ try {
   assert.equal(relocation.action, "vault-updated");
   assert.ok(fs.existsSync(path.join(relocatedVault, "skills", "codex", "git-skill", "SKILL.md")));
 
-  console.log(JSON.stringify({ ok: true, root, checks: 65, deviceReports: true, noOpWrites: true, stableActiveCheckpoint: true, extendedWindowsPath: true, semanticRepair: true, legacyAbortRepair: true, unsafeCanonicalQuarantine: true, activeTurnProtection: true, perDeviceMetadata: true, desktopCatalogImport: true, maintenanceMode: true, maintenanceBootstrap: process.platform === "win32", folderTransport: true, gitTransport: true, vaultRelocation: true, conversationImport: true, skillThreeWay: true, conflictRecovery: true, daemonPreview: true }, null, 2));
+  console.log(JSON.stringify({ ok: true, root, checks: 70, projectDiscovery: true, projectTaskSelection: true, projectCatalogs: true, projectPathMapping: true, deviceReports: true, noOpWrites: true, stableActiveCheckpoint: true, extendedWindowsPath: true, semanticRepair: true, legacyAbortRepair: true, unsafeCanonicalQuarantine: true, activeTurnProtection: true, perDeviceMetadata: true, desktopCatalogImport: true, maintenanceMode: true, maintenanceBootstrap: process.platform === "win32", folderTransport: true, gitTransport: true, vaultRelocation: true, conversationImport: true, skillThreeWay: true, conflictRecovery: true, daemonPreview: true }, null, 2));
 } catch (error) {
   console.error(`E2E FAILED; artifacts kept at ${root}`);
   throw error;

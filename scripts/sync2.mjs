@@ -50,7 +50,7 @@ function parseArgs(argv) {
       continue;
     }
     const [rawKey, inline] = value.slice(2).split(/=(.*)/s, 2);
-    if (["json", "dry-run", "quiet", "force", "no-sync", "help", "all"].includes(rawKey)) {
+    if (["json", "dry-run", "quiet", "force", "no-sync", "help", "all", "no-tasks", "register", "no-register"].includes(rawKey)) {
       options[rawKey] = inline === undefined ? true : inline !== "false";
       continue;
     }
@@ -430,9 +430,15 @@ function resolveThread(config, selector) {
 
 function applyPathMaps(value, maps = []) {
   if (!value) return value;
-  for (const mapping of maps) {
-    const from = String(mapping.from);
-    if (value.toLowerCase().startsWith(from.toLowerCase())) return `${mapping.to}${value.slice(from.length)}`;
+  const portableValue = stripWindowsExtendedPrefix(String(value)).replaceAll("\\", "/").replace(/\/+$/, "");
+  const ordered = [...maps].sort((a, b) => String(b.from).length - String(a.from).length);
+  for (const mapping of ordered) {
+    const from = stripWindowsExtendedPrefix(String(mapping.from)).replaceAll("\\", "/").replace(/\/+$/, "");
+    const lowerValue = portableValue.toLowerCase();
+    const lowerFrom = from.toLowerCase();
+    if (lowerValue !== lowerFrom && !lowerValue.startsWith(`${lowerFrom}/`)) continue;
+    const suffix = portableValue.slice(from.length).replace(/^\/+/, "");
+    return suffix ? path.join(expandPath(String(mapping.to)), ...suffix.split("/")) : expandPath(String(mapping.to));
   }
   return value;
 }
@@ -678,17 +684,144 @@ function resolveProjectFolder(inventory, selector) {
   return matches[0];
 }
 
+function projectThreads(config, projectPath) {
+  return listThreads(config.codexHome).filter((thread) => {
+    if (Number(thread.archived ?? 0) !== 0 || !thread.cwd) return false;
+    const localAbsolute = process.platform === "win32"
+      ? path.win32.isAbsolute(stripWindowsExtendedPrefix(thread.cwd))
+      : path.posix.isAbsolute(String(thread.cwd));
+    if (!localAbsolute) return false;
+    try { return pathContains(projectPath, thread.cwd); } catch { return false; }
+  });
+}
+
+function selectProjectThreads(config, projectPath, selected = true) {
+  const changedAt = nowIso();
+  const threads = projectThreads(config, projectPath);
+  for (const thread of threads) {
+    config.conversations[thread.id] = {
+      selected,
+      updatedAt: changedAt,
+      title: thread.title ?? thread.thread_name ?? thread.id,
+      deviceId: config.deviceId,
+      projectPath: path.resolve(projectPath),
+    };
+  }
+  return threads.map((thread) => ({ id: thread.id, title: thread.title ?? thread.thread_name ?? thread.id, cwd: thread.cwd }));
+}
+
+function codexProjectRoots(config) {
+  const stateFile = path.join(config.codexHome, ".codex-global-state.json");
+  const state = fs.existsSync(stateFile) ? readJson(stateFile, {}) : {};
+  const configuredRoots = [
+    ...(Array.isArray(state["electron-saved-workspace-roots"]) ? state["electron-saved-workspace-roots"] : []),
+    ...(Array.isArray(state["active-workspace-roots"]) ? state["active-workspace-roots"] : []),
+  ];
+  const roots = [];
+  const add = (candidate, origin) => {
+    if (!candidate) return;
+    const localAbsolute = process.platform === "win32"
+      ? path.win32.isAbsolute(stripWindowsExtendedPrefix(candidate))
+      : path.posix.isAbsolute(String(candidate));
+    if (!localAbsolute) return;
+    let resolved;
+    try { resolved = expandPath(String(candidate)); } catch { return; }
+    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) return;
+    if (roots.some((item) => normalizedPath(item.path) === normalizedPath(resolved))) return;
+    if (origin === "thread-cwd" && roots.some((item) => pathContains(item.path, resolved))) return;
+    roots.push({ path: resolved, label: path.basename(resolved), origin });
+  };
+  for (const root of configuredRoots) add(root, "codex-projects");
+  for (const thread of listThreads(config.codexHome)) add(thread.cwd, "thread-cwd");
+  return roots.map((root) => ({ ...root, tasks: projectThreads(config, root.path).map((thread) => ({ id: thread.id, title: thread.title ?? thread.thread_name ?? thread.id, cwd: thread.cwd })) }));
+}
+
+function registerCodexProject(projectPath, dryRun = false) {
+  const resolved = path.resolve(projectPath);
+  const url = `codex://new?path=${encodeURIComponent(resolved)}`;
+  if (dryRun) return { registered: false, dryRun: true, url };
+  let result;
+  if (process.platform === "darwin") result = run("open", [url], { allowFailure: true });
+  else if (process.platform === "win32") result = run("cmd.exe", ["/d", "/s", "/c", "start", "", url], { allowFailure: true });
+  else return { registered: false, unsupported: true, url };
+  if (result.status !== 0) throw new Sync2Error(`Codex project registration failed: ${(result.stderr || result.stdout).trim()}`);
+  return { registered: true, url };
+}
+
+function projectCatalogDir(config) {
+  return path.join(config.vault, ".sync2", "project-catalogs");
+}
+
+function publishProjectCatalog(config, dryRun = false) {
+  let syncthingDeviceId = null;
+  try {
+    if (config.syncthing) syncthingDeviceId = syncthingInventory(findSyncthing(config)).myID;
+  } catch { /* A catalog remains useful when Syncthing is temporarily unavailable. */ }
+  const discovered = codexProjectRoots(config);
+  const configured = Object.values(config.projects ?? {}).map((project) => {
+    const candidate = discovered.find((item) => normalizedPath(item.path) === normalizedPath(project.path));
+    return { ...project, tasks: candidate?.tasks ?? projectThreads(config, project.path).map((thread) => ({ id: thread.id, title: thread.title ?? thread.thread_name ?? thread.id, cwd: thread.cwd })) };
+  });
+  const configuredPaths = new Set(configured.map((item) => normalizedPath(item.path)));
+  const projects = [...configured, ...discovered.filter((item) => !configuredPaths.has(normalizedPath(item.path))).map((item) => ({ ...item, configured: false }))];
+  const catalog = { version: VERSION, protocolRevision: PROTOCOL_REVISION, deviceId: config.deviceId, syncthingDeviceId, updatedAt: nowIso(), projects };
+  writeJson(path.join(projectCatalogDir(config), `${config.deviceId}.json`), catalog, dryRun);
+  return catalog;
+}
+
+function listProjectCatalogs(config) {
+  const dir = projectCatalogDir(config);
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir, { withFileTypes: true }).filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+    .map((entry) => readJson(path.join(dir, entry.name)));
+}
+
+function addPathMap(config, from, to) {
+  config.pathMaps ??= [];
+  const normalizedFrom = stripWindowsExtendedPrefix(String(from)).replaceAll("\\", "/").replace(/\/+$/, "").toLowerCase();
+  config.pathMaps = config.pathMaps.filter((mapping) => stripWindowsExtendedPrefix(String(mapping.from)).replaceAll("\\", "/").replace(/\/+$/, "").toLowerCase() !== normalizedFrom);
+  config.pathMaps.push({ from: String(from), to: path.resolve(to) });
+}
+
 async function projectCommand(options, action, rest) {
   const { config, file } = loadConfig(options);
+  config.projects ??= {};
+  if (action === "discover") {
+    const projects = codexProjectRoots(config).map((project) => {
+      const registered = Object.values(config.projects).find((item) => normalizedPath(item.path) === normalizedPath(project.path));
+      return { ...project, registered: registered ? { id: registered.id, sharePolicy: registered.sharePolicy } : null };
+    });
+    return { stateFile: path.join(config.codexHome, ".codex-global-state.json"), projects };
+  }
+  if (action === "catalogs") return { catalogs: listProjectCatalogs(config) };
+  if (action === "tasks") {
+    const selector = rest.join(" ") || options.path || "current";
+    const projectPath = selector === "current" ? process.cwd() : expandPath(selector);
+    if (!fs.existsSync(projectPath) || !fs.statSync(projectPath).isDirectory()) throw new Sync2Error(`Project directory does not exist: ${projectPath}`);
+    const selectedTasks = selectProjectThreads(config, projectPath, true);
+    saveConfig(file, config, Boolean(options["dry-run"]));
+    return { action: "project-tasks-selected", path: path.resolve(projectPath), selectedTasks, count: selectedTasks.length };
+  }
+  if (action === "map") {
+    if (!options.from || !options.to) throw new Sync2Error("project map requires --from <source-path> --to <local-path>");
+    addPathMap(config, options.from, expandPath(options.to));
+    saveConfig(file, config, Boolean(options["dry-run"]));
+    return { action: "project-path-mapped", pathMaps: config.pathMaps };
+  }
+  if (action === "register") {
+    const selector = rest.join(" ") || options.path || "current";
+    const projectPath = selector === "current" ? process.cwd() : expandPath(selector);
+    if (!fs.existsSync(projectPath) || !fs.statSync(projectPath).isDirectory()) throw new Sync2Error(`Project directory does not exist: ${projectPath}`);
+    return { action: "registered-in-codex", path: path.resolve(projectPath), ...registerCodexProject(projectPath, Boolean(options["dry-run"])) };
+  }
   const executable = findSyncthing(config, options);
   config.syncthing = { ...(config.syncthing ?? {}), executable };
-  config.projects ??= {};
   const inventory = syncthingInventory(executable);
   if (action === "list") {
     saveConfig(file, config);
     return { executable, devices: inventory.devices, folders: inventory.folders.map((folder) => ({ id: folder.id, label: folder.label, path: folder.path, type: folder.type, devices: folder.devices.map((item) => item.deviceID) })) };
   }
-  if (action === "add") {
+  if (action === "add" || action === "select") {
     const selector = rest.join(" ") || options.path || "current";
     const projectPath = selector === "current" ? process.cwd() : expandPath(selector);
     if (!fs.existsSync(projectPath) || !fs.statSync(projectPath).isDirectory()) throw new Sync2Error(`Project directory does not exist: ${projectPath}`);
@@ -724,9 +857,39 @@ async function projectCommand(options, action, rest) {
     if (options.ignore?.length && !options["dry-run"]) {
       await syncthingRest(config, `/db/ignores?folder=${encodeURIComponent(folder.id)}`, { method: "POST", body: { ignore: ignorePatterns } });
     }
-    config.projects[folder.id] = { id: folder.id, label: folder.label ?? label, path: path.resolve(projectPath), devices: [...new Set([...existingDevices, ...devices.map((item) => item.id)])], sharePolicy, ignorePatterns, addedAt: config.projects[folder.id]?.addedAt ?? nowIso(), updatedAt: nowIso() };
+    const selectedTasks = options["no-tasks"] ? [] : selectProjectThreads(config, projectPath, true);
+    config.projects[folder.id] = { id: folder.id, label: folder.label ?? label, path: path.resolve(projectPath), devices: [...new Set([...existingDevices, ...devices.map((item) => item.id)])], sharePolicy, ignorePatterns, selectedTaskIds: selectedTasks.map((item) => item.id), addedAt: config.projects[folder.id]?.addedAt ?? nowIso(), updatedAt: nowIso() };
     saveConfig(file, config, Boolean(options["dry-run"]));
-    return { action: created ? "created" : "already-configured", dryRun: Boolean(options["dry-run"]), folder: config.projects[folder.id], sharedWith: devices, newlySharedWith: addedDevices };
+    return { action: created ? "created" : "already-configured", dryRun: Boolean(options["dry-run"]), folder: config.projects[folder.id], selectedTasks, sharedWith: devices, newlySharedWith: addedDevices };
+  }
+  if (action === "accept") {
+    const id = rest[0] || options.id;
+    const localPath = expandPath(options.path ?? rest.slice(1).join(" "));
+    if (!id || !localPath) throw new Sync2Error("project accept requires <folder-id> --path <local-path>");
+    const catalogs = listProjectCatalogs(config);
+    const sources = catalogs.flatMap((catalog) => (catalog.projects ?? []).filter((project) => project.id === id).map((project) => ({ catalog, project })));
+    if (!sources.length) throw new Sync2Error(`No portable project catalog advertises folder ID: ${id}`);
+    const source = sources.sort((a, b) => String(b.catalog.updatedAt).localeCompare(String(a.catalog.updatedAt)))[0];
+    mkdir(localPath, Boolean(options["dry-run"]));
+    let folder = inventory.folders.find((item) => item.id === id);
+    if (folder && normalizedPath(folder.path) !== normalizedPath(localPath)) throw new Sync2Error(`Syncthing folder ${id} already uses another path: ${folder.path}`);
+    if (!folder) {
+      if (!options["dry-run"]) stCli(executable, ["config", "folders", "add", "--id", id, "--label", source.project.label ?? id, "--path", path.resolve(localPath), "--type", "sendreceive"]);
+      folder = { id, label: source.project.label ?? id, path: path.resolve(localPath), type: "sendreceive", devices: [{ deviceID: inventory.myID }] };
+    }
+    const existingDevices = new Set((folder.devices ?? []).map((item) => item.deviceID));
+    for (const item of sources) {
+      const remoteId = item.catalog.syncthingDeviceId;
+      if (!remoteId || remoteId === inventory.myID || existingDevices.has(remoteId)) continue;
+      if (!inventory.devices.some((device) => device.id === remoteId)) continue;
+      if (!options["dry-run"]) stCli(executable, ["config", "folders", id, "devices", "add", "--device-id", remoteId]);
+      existingDevices.add(remoteId);
+    }
+    for (const item of sources) addPathMap(config, item.project.path, localPath);
+    config.projects[id] = { id, label: source.project.label ?? id, path: path.resolve(localPath), devices: [...existingDevices], sharePolicy: "selected", ignorePatterns: source.project.ignorePatterns ?? [], sourceDevices: sources.map((item) => item.catalog.deviceId), addedAt: config.projects[id]?.addedAt ?? nowIso(), updatedAt: nowIso() };
+    const registration = options["no-register"] ? { registered: false, skipped: true } : registerCodexProject(localPath, Boolean(options["dry-run"]));
+    saveConfig(file, config, Boolean(options["dry-run"]));
+    return { action: "accepted", dryRun: Boolean(options["dry-run"]), folder: config.projects[id], pathMaps: config.pathMaps, registration };
   }
   const selector = rest.join(" ") || options.id || options.path;
   if (action === "remove") {
@@ -804,7 +967,7 @@ function gitPost(config, dryRun) {
 
 function ensureVault(config, dryRun = false) {
   mkdir(config.vault, dryRun);
-  for (const relative of [".sync2/selections", "conversations", "skills", "conflicts/skills"]) mkdir(path.join(config.vault, relative), dryRun);
+  for (const relative of [".sync2/selections", ".sync2/project-catalogs", "conversations", "skills", "conflicts/skills"]) mkdir(path.join(config.vault, relative), dryRun);
   const marker = path.join(config.vault, ".sync2", "vault.json");
   const existing = fs.existsSync(marker) ? readJson(marker) : null;
   if (existing && existing.version !== VERSION) throw new Sync2Error(`Vault protocol version ${existing.version} is unsupported.`);
@@ -1255,6 +1418,7 @@ function buildDeviceReport(config, lastRunOverride = undefined) {
     vault: config.vault,
     selectedConversations,
     skillSources,
+    projects: Object.values(config.projects ?? {}).map((project) => ({ id: project.id, label: project.label, path: project.path, selectedTaskIds: project.selectedTaskIds ?? [] })),
     daemon: daemonStatus(config, config._configFile),
     maintenance: { enabled: fs.existsSync(maintenanceFile(config)) },
     lastRun: lastRunOverride === undefined ? readJson(lastRunFile(config), null) : lastRunOverride,
@@ -1317,6 +1481,7 @@ function syncCommand(options, direction = "sync") {
     withVaultLock(config, dryRun, () => {
       syncConversations(config, direction, dryRun, summary);
       syncSkills(config, direction, dryRun, summary);
+      publishProjectCatalog(config, dryRun);
       reconcileProjectShares(config, dryRun, summary);
       const successfulRun = { ok: true, startedAt, finishedAt: nowIso(), summary };
       recordLastRun(config, successfulRun, dryRun);
@@ -1714,6 +1879,7 @@ function statusCommand(options) {
     selectedConversations: selected,
     skillSources: config.skillSources,
     projects: Object.values(config.projects ?? {}),
+    projectCatalogs: listProjectCatalogs(config).map((catalog) => ({ deviceId: catalog.deviceId, syncthingDeviceId: catalog.syncthingDeviceId ?? null, updatedAt: catalog.updatedAt, projects: (catalog.projects ?? []).map((project) => ({ id: project.id ?? null, label: project.label, path: project.path, tasks: project.tasks?.length ?? 0, configured: project.configured !== false })) })),
     syncthing: config.syncthing,
     deviceReports: listDeviceReports(config).map((report) => ({ deviceId: report.deviceId, platform: report.platform, protocolRevision: report.protocolRevision ?? 1, scriptSha256: report.scriptSha256 ?? null, selectedConversations: report.selectedConversations.length, skillSources: report.skillSources.map((source) => ({ name: source.name, skillDirectories: source.skillDirectories, files: source.files })), daemonInstalled: report.daemon?.installed, lastRunOk: report.lastRun?.ok ?? null })),
     conversationConflicts,
@@ -1785,7 +1951,7 @@ function daemonCommand(options, action) {
 }
 
 function helpText() {
-  return `Sync2 v${VERSION}\n\nCommands:\n  init --vault PATH [--transport folder|git] [--repo URL]\n  vault use --vault PATH [--transport folder|git] [--repo URL]\n  sync|push|pull [--dry-run]\n  status | doctor\n  maintenance on|off|status [--reason TEXT]\n  conversation select <current|id|title>\n  conversation unselect <id|title>\n  conversation list\n  conversation audit <current|id|title>\n  conversation repair <current|id|title> [--title TITLE]\n  conversation resolve <id> --from-device DEVICE\n  skills list|discover\n  skills add --name NAME --path PATH [--exclude NAME]\n  skills remove NAME\n  skills install NAME --to PATH\n  project add <current|PATH> [--id ID] [--label LABEL] [--share-with all|DEVICE] [--ignore PATTERN]\n  project list | project status <ID|PATH> | project rescan <ID|PATH>\n  project remove <ID|PATH>  (registration only; keeps local files)\n  syncthing configure --syncthing-exe PATH | syncthing status\n  syncthing add-device --device-id ID [--name NAME]\n  device report | device list\n  daemon install|uninstall|status [--minutes 5] [--dry-run]\n\nGlobal options: --config PATH --json --quiet`;
+  return `Sync2 v${VERSION}\n\nCommands:\n  init --vault PATH [--transport folder|git] [--repo URL]\n  vault use --vault PATH [--transport folder|git] [--repo URL]\n  sync|push|pull [--dry-run]\n  status | doctor\n  maintenance on|off|status [--reason TEXT]\n  conversation select <current|id|title>\n  conversation unselect <id|title>\n  conversation list\n  conversation audit <current|id|title>\n  conversation repair <current|id|title> [--title TITLE]\n  conversation resolve <id> --from-device DEVICE\n  skills list|discover\n  skills add --name NAME --path PATH [--exclude NAME]\n  skills remove NAME\n  skills install NAME --to PATH\n  project discover | project catalogs\n  project add|select <current|PATH> [--id ID] [--label LABEL] [--share-with all|DEVICE] [--ignore PATTERN] [--no-tasks]\n  project tasks <current|PATH>\n  project accept <ID> --path PATH [--no-register]\n  project map --from SOURCE_PATH --to LOCAL_PATH | project register <current|PATH>\n  project list | project status <ID|PATH> | project rescan <ID|PATH>\n  project remove <ID|PATH>  (registration only; keeps local files)\n  syncthing configure --syncthing-exe PATH | syncthing status\n  syncthing add-device --device-id ID [--name NAME]\n  device report | device list\n  daemon install|uninstall|status [--minutes 5] [--dry-run]\n\nGlobal options: --config PATH --json --quiet`;
 }
 
 function printResult(result, options) {
